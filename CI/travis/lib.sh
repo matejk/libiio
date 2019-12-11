@@ -3,6 +3,9 @@
 export TRAVIS_API_URL="https://api.travis-ci.org"
 LOCAL_BUILD_DIR=${LOCAL_BUILD_DIR:-build}
 
+HOMEBREW_NO_INSTALL_CLEANUP=1
+export HOMEBREW_NO_INSTALL_CLEANUP
+
 COMMON_SCRIPTS="jobs_running_cnt.py inside_docker.sh"
 
 echo_red()   { printf "\033[1;31m$*\033[m\n"; }
@@ -150,12 +153,24 @@ get_ldist() {
 __brew_install_or_upgrade() {
 	brew install $1 || \
 		brew upgrade $1 || \
-		brew ls --version $1
+		brew ls --versions $1
 }
 
 brew_install_or_upgrade() {
 	while [ -n "$1" ] ; do
 		__brew_install_or_upgrade "$1" || return 1
+		shift
+	done
+}
+
+__brew_install_if_not_exists() {
+	brew ls --versions $1 || \
+		brew install $1
+}
+
+brew_install_if_not_exists() {
+	while [ -n "$1" ] ; do
+		__brew_install_if_not_exists "$1" || return 1
 		shift
 	done
 }
