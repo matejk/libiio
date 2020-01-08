@@ -40,13 +40,12 @@ def _checkNegative(result, func, arguments):
 		raise OSError(-result, _strerror(-result))
 
 # Python 2 and Python 3 compatible _isstring function.
-try:
-	basestring  # attempt to evaluate basestring (Python 2)
-	def _isstring(s):
+def _isstring(s):
+	try:
+		# attempt to evaluate basestring (Python 2)
 		return isinstance(s, basestring)
-except NameError:
-	# No basestring --> Python 3
-	def _isstring(s):
+	except NameError:
+		# No basestring --> Python 3
 		return isinstance(s, str)
 
 class _ScanContext(Structure):
