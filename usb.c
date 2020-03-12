@@ -1,7 +1,7 @@
 /*
  * libiio - Library for interfacing industrial I/O (IIO) devices
  *
- * Copyright (C) 2015 Analog Devices, Inc.
+ * Copyright (C) 2015 - 2020 Analog Devices, Inc.
  * Author: Paul Cercueil <paul.cercueil@analog.com>
  *
  * This library is free software; you can redistribute it and/or
@@ -22,7 +22,7 @@
 
 #include <ctype.h>
 #include <errno.h>
-#include <libusb-1.0/libusb.h>
+#include <libusb.h>
 #include <stdbool.h>
 #include <string.h>
 
@@ -399,6 +399,25 @@ static int usb_set_timeout(struct iio_context *ctx, unsigned int timeout)
 	return ret;
 }
 
+static int usb_get_trigger(const struct iio_device *dev,
+                const struct iio_device **trigger)
+{
+	struct iio_context_pdata *pdata = dev->ctx->pdata;
+
+	return iiod_client_get_trigger(pdata->iiod_client,
+			&pdata->io_ctx, dev, trigger);
+}
+
+static int usb_set_trigger(const struct iio_device *dev,
+                const struct iio_device *trigger)
+{
+	struct iio_context_pdata *pdata = dev->ctx->pdata;
+
+	return iiod_client_set_trigger(pdata->iiod_client,
+			&pdata->io_ctx, dev, trigger);
+}
+
+
 static void usb_shutdown(struct iio_context *ctx)
 {
 	unsigned int i;
@@ -514,6 +533,8 @@ static const struct iio_backend_ops usb_ops = {
 	.read_channel_attr = usb_read_chn_attr,
 	.write_device_attr = usb_write_dev_attr,
 	.write_channel_attr = usb_write_chn_attr,
+	.get_trigger = usb_get_trigger,
+	.set_trigger = usb_set_trigger,
 	.set_kernel_buffers_count = usb_set_kernel_buffers_count,
 	.set_timeout = usb_set_timeout,
 	.shutdown = usb_shutdown,
@@ -859,16 +880,21 @@ struct iio_context * usb_create_context(unsigned int bus,
 
 	ret = libusb_claim_interface(hdl, interface);
 	if (ret) {
+		char err_str[1024];
 		ret = -(int) libusb_to_errno(ret);
-		ERROR("Unable to claim interface %u:%u:%u: %i\n",
-		      bus, address, interface, ret);
+		iio_strerror(-ret, err_str, sizeof(err_str));
+		ERROR("Unable to claim interface %u:%u:%u: %s (%i)\n",
+		      bus, address, interface, err_str, ret);
 		goto err_libusb_close;
 	}
 
 	ret = libusb_get_active_config_descriptor(usb_dev, &conf_desc);
 	if (ret) {
+		char err_str[1024];
 		ret = -(int) libusb_to_errno(ret);
-		ERROR("Unable to get config descriptor: %i\n", ret);
+		iio_strerror(-ret, err_str, sizeof(err_str));
+		ERROR("Unable to get config descriptor: %s (%i)\n",
+				err_str, ret);
 		goto err_libusb_close;
 	}
 

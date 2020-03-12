@@ -1,19 +1,22 @@
 /*
- * libiio - Library for interfacing industrial I/O (IIO) devices
+ * iio_readdev - Part of the Industrial I/O (IIO) utilities
  *
  * Copyright (C) 2014 Analog Devices, Inc.
  * Author: Paul Cercueil <paul.cercueil@analog.com>
  *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
  *
- * This library is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  * */
 
 #include <errno.h>
@@ -84,6 +87,8 @@ static void quit_all(int sig)
 #ifdef _WIN32
 
 #include <windows.h>
+#include <io.h>
+#include <fcntl.h>
 
 BOOL WINAPI sig_handler_fn(DWORD dwCtrlType)
 {
@@ -377,6 +382,14 @@ int main(int argc, char **argv)
 		iio_context_destroy(ctx);
 		return EXIT_FAILURE;
 	}
+
+#ifdef _WIN32
+	/*
+	 * Deactivate the translation for the stdout. Otherwise, bytes that have
+	 * the same value as line feed character (LF) will be translated to CR-LF.
+	 */
+	_setmode(_fileno(stdout), _O_BINARY);
+#endif
 
 	while (app_running) {
 		int ret = iio_buffer_refill(buffer);

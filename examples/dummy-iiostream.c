@@ -13,16 +13,22 @@
  * Copyright (C) 2014 IABG mbH
  * Author: Michael Feilen <feilen_at_iabg.de>
  *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
  *
- * This library is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ */
+
+/*
  * How to setup the sample IIO dummy device and hrtimer trigger:
  *
  * 1. Check if `configfs` is already mounted
@@ -76,6 +82,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <getopt.h>
+#include <inttypes.h>
 
 #ifdef __APPLE__
 #include <iio/iio.h>
@@ -142,9 +149,9 @@ static ssize_t sample_cb(const struct iio_channel *chn, void *src, size_t bytes,
 	printf("%s ", iio_channel_get_id(chn));
 	for (int j = 0; j < repeat; ++j) {
 		if (bytes == sizeof(int16_t))
-			printf("%i ", ((int16_t *)src)[j]);
+			printf("%" PRIi16 " ", ((int16_t *)src)[j]);
 		else if (bytes == sizeof(int64_t))
-			printf("%ld ", ((int64_t *)src)[j]);
+			printf("%" PRId64 " ", ((int64_t *)src)[j]);
 	}
 
 	return bytes * repeat;
@@ -156,7 +163,7 @@ static void usage(int argc, char *argv[])
 	printf("  -d\tdevice name (default \"iio_dummy_part_no\")\n");
 	printf("  -t\ttrigger name (default \"instance1\")\n");
 	printf("  -b\tbuffer length (default 1)\n");
-	printf("  -r\tread method (default 0 pointer, 1 callback, 2 read, 3 read raw)\n");
+	printf("  -r\tread method (default 0 pointer, 1 callback, 2 read raw, 3 read)\n");
 	printf("  -c\tread count (default no limit)\n");
 }
 
@@ -301,7 +308,7 @@ int main (int argc, char **argv)
 		if (has_ts)
 			for (p_dat = iio_buffer_first(rxbuf, channels[channel_count-1]); p_dat < p_end; p_dat += p_inc) {
 				now_ts = (((int64_t *)p_dat)[0]);
-				printf("[%04ld] ", last_ts > 0 ? (now_ts - last_ts)/1000/1000 : 0);
+				printf("[%04" PRId64 "] ", last_ts > 0 ? (now_ts - last_ts)/1000/1000 : 0);
 				last_ts = now_ts;
 			}
 
@@ -317,9 +324,9 @@ int main (int argc, char **argv)
 				for (p_dat = iio_buffer_first(rxbuf, channels[i]); p_dat < p_end; p_dat += p_inc) {
 					for (int j = 0; j < repeat; ++j) {
 						if (fmt->length/8 == sizeof(int16_t))
-							printf("%i ", ((int16_t *)p_dat)[j]);
+							printf("%" PRIi16 " ", ((int16_t *)p_dat)[j]);
 						else if (fmt->length/8 == sizeof(int64_t))
-							printf("%ld ", ((int64_t *)p_dat)[j]);
+							printf("%" PRId64 " ", ((int64_t *)p_dat)[j]);
 					}
 				}
 			}
@@ -351,9 +358,9 @@ int main (int argc, char **argv)
 				for (int sample = 0; sample < bytes / sample_size; ++sample) {
 					for (int j = 0; j < repeat; ++j) {
 						if (fmt->length / 8 == sizeof(int16_t))
-							printf("%i ", ((int16_t *)buf)[sample+j]);
+							printf("%" PRIi16 " ", ((int16_t *)buf)[sample+j]);
 						else if (fmt->length / 8 == sizeof(int64_t))
-							printf("%li ", ((int64_t *)buf)[sample+j]);
+							printf("%" PRId64 " ", ((int64_t *)buf)[sample+j]);
 					}
 				}
 

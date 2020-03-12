@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8.7)
 project(libiio C)
 
 set(LIBIIO_VERSION_MAJOR 0)
-set(LIBIIO_VERSION_MINOR 18)
+set(LIBIIO_VERSION_MINOR 19)
 set(VERSION "${LIBIIO_VERSION_MAJOR}.${LIBIIO_VERSION_MINOR}")
 if (WIN32)
 	string(TIMESTAMP BUILD_YEAR "%Y")
@@ -98,6 +98,12 @@ IF(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 	add_definitions(-D_GNU_SOURCE=1)
 endif()
 
+# For BSD variants
+if(${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD|DragonFly|OpenBSD|NetBSD")
+	set(CMAKE_REQUIRED_DEFINITIONS "-D__BSD_VISIBLE")
+	add_definitions(-D__BSD_VISIBLE=1)
+endif()
+
 option(ENABLE_IPV6 "Define if you want to enable IPv6 support" ON)
 if (ENABLE_IPV6)
 	check_symbol_exists(in6addr_any "netinet/in.h" HAVE_IPV6)
@@ -163,8 +169,9 @@ if(WITH_LOCAL_BACKEND)
 	endif()
 endif()
 
-find_library(LIBUSB_LIBRARIES usb-1.0)
-find_path(LIBUSB_INCLUDE_DIR libusb-1.0/libusb.h)
+#Handle FreeBSD libusb and Linux libusb-1.0 libraries
+find_library(LIBUSB_LIBRARIES NAMES usb-1.0 usb)
+find_path(LIBUSB_INCLUDE_DIR libusb.h PATH_SUFFIXES libusb-1.0)
 if (LIBUSB_LIBRARIES AND LIBUSB_INCLUDE_DIR)
 	message(STATUS "Looking for libusb-1.0 : Found")
 	option(WITH_USB_BACKEND "Enable the libusb backend" ON)
@@ -180,11 +187,15 @@ if (LIBUSB_LIBRARIES AND LIBUSB_INCLUDE_DIR)
 		include_directories(${LIBUSB_INCLUDE_DIR})
 
 		set(TEMP ${CMAKE_REQUIRED_LIBRARIES})
+		set(TEMP1 ${CMAKE_REQUIRED_INCLUDES})
 		set(CMAKE_REQUIRED_LIBRARIES ${CMAKE_REQUIRED_LIBRARIES}
-			 ${LIBUSB_LIBRARIES})
-		check_symbol_exists(libusb_get_version "libusb-1.0/libusb.h"
+			${LIBUSB_LIBRARIES})
+		set(CMAKE_REQUIRED_INCLUDES ${CMAKE_REQUIRED_INCLUDES}
+			${LIBUSB_INCLUDE_DIR})
+		check_symbol_exists(libusb_get_version libusb.h
 			HAS_LIBUSB_GETVERSION)
 		set(CMAKE_REQUIRED_LIBRARIES ${TEMP})
+		set(CMAKE_REQUIRED_INCLUDES ${TEMP1})
 	endif()
 else()
 	message(STATUS "Looking for libusb-1.0 : Failed; building without usb")
@@ -218,6 +229,7 @@ endif()
 include_directories(${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
 
 if(WITH_NETWORK_BACKEND)
+	message(STATUS "Building with Network back end support")
 	if (WIN32)
 		set(LIBS_TO_LINK ${LIBS_TO_LINK} wsock32 ws2_32)
 	endif()
@@ -244,14 +256,20 @@ if(WITH_NETWORK_BACKEND)
 	find_library(AVAHI_CLIENT_LIBRARIES avahi-client)
 	find_library(AVAHI_COMMON_LIBRARIES avahi-common)
 	if(AVAHI_CLIENT_LIBRARIES AND AVAHI_COMMON_LIBRARIES)
+		message(STATUS "Building with Avahi, a zero-configuration networking (zeroconf) implementation")
 		set(HAVE_AVAHI ON)
 		set(AVAHI_LIBRARIES ${AVAHI_CLIENT_LIBRARIES} ${AVAHI_COMMON_LIBRARIES})
 		set(LIBS_TO_LINK ${LIBS_TO_LINK} ${AVAHI_LIBRARIES})
+		set(AVAHI_SERVICE_INSTALL_DIR /etc/avahi/services/ CACHE PATH "default install path for Avahi service files")
+	else()
+		message(STATUS "Building without Avahi (zeroconf) support")
 	endif()
 
 	set(NEED_THREADS 1)
 	set(IIOD_CLIENT 1)
 	set(NEED_LIBXML2 1)
+else()
+	message(STATUS "Building without network support")
 endif()
 
 # Since libxml2-2.9.2, libxml2 provides its own LibXml2-config.cmake, with all
@@ -300,6 +318,9 @@ endif()
 
 if (IIOD_CLIENT)
 	set(LIBIIO_CFILES ${LIBIIO_CFILES} iiod-client.c)
+	if (HAVE_AVAHI)
+		install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/iio.service DESTINATION ${AVAHI_SERVICE_INSTALL_DIR})
+	endif()
 endif()
 
 configure_file(libiio.iss.cmakein ${CMAKE_CURRENT_BINARY_DIR}/libiio.iss @ONLY)
@@ -314,6 +335,9 @@ endif()
 #set(SETUP_PY ${CMAKE_CURRENT_SOURCE_DIR}/bindings/python/setup.py)
 #configure_file(python/setup.py.in ${SETUP_PY} @ONLY)
 
+option(CSHARP_BINDINGS "Install C# bindings" OFF)
+option(PYTHON_BINDINGS "Install Python bindings" OFF)
+option(MATLAB_BINDINGS "Build MATLAB bindings" OFF)
 add_subdirectory(bindings)
 
 if (WITH_MATLAB_BINDINGS_API)
@@ -356,12 +380,12 @@ if(NOT SKIP_INSTALL_ALL)
 		PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 endif()
 
-find_package(Doxygen)
-if(DOXYGEN_FOUND)
-	option(WITH_DOC "Generate documentation with Doxygen" ON)
-
-	# It is not an error when 'dot' is not found, just switching off the Doxygen's HAVE_DOT option
-	find_package_handle_standard_args (Dot REQUIRED_VARS DOXYGEN_DOT_EXECUTABLE)
+option(WITH_DOC "Generate documentation with Doxygen" OFF)
+if(WITH_DOC)
+	find_package(Doxygen REQUIRED)
+	# It is not an error when 'dot' is not found,
+	# just switching off the Doxygen's HAVE_DOT option
+	find_package_handle_standard_args(Dot REQUIRED_VARS DOXYGEN_DOT_EXECUTABLE)
 
 	include(cmake/CheckCaseSensitiveFileSystem.cmake)
 	if (HAVE_CASE_SENSITIVE_FILESYSTEM)
@@ -370,26 +394,28 @@ if(DOXYGEN_FOUND)
 		set(CMAKE_CASE_SENSITIVE_FILESYSTEM "NO")
 	endif()
 
-	if (WITH_DOC)
-		configure_file(${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile.in ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile @ONLY)
-		configure_file(${CMAKE_CURRENT_SOURCE_DIR}/CI/travis/generateDocumentationAndDeploy.sh.in
-				${CMAKE_CURRENT_BINARY_DIR}/generateDocumentationAndDeploy.sh @ONLY)
-		set(HTML_DEST_DIR ${CMAKE_CURRENT_BINARY_DIR}/html)
-		file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/doc DESTINATION ${HTML_DEST_DIR})
+	configure_file(
+		${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile.in
+		${CMAKE_CURRENT_BINARY_DIR}/Doxyfile @ONLY)
+	configure_file(
+		${CMAKE_CURRENT_SOURCE_DIR}/CI/travis/generateDocumentationAndDeploy.sh.in
+		${CMAKE_CURRENT_BINARY_DIR}/generateDocumentationAndDeploy.sh @ONLY)
+	set(HTML_DEST_DIR ${CMAKE_CURRENT_BINARY_DIR}/html)
+	file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/doc DESTINATION ${HTML_DEST_DIR})
 
-		add_custom_command(TARGET iio POST_BUILD
-			COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile
-			WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-			COMMENT "Generating API documentation with Doxygen" VERBATIM
-			)
+	add_custom_command(TARGET iio POST_BUILD
+		COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile
+		WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+		COMMENT "Generating API documentation with Doxygen" VERBATIM)
 
-		if(NOT SKIP_INSTALL_ALL)
-			install(DIRECTORY ${HTML_DEST_DIR} DESTINATION ${CMAKE_INSTALL_DOCDIR})
-		endif()
+	if(NOT SKIP_INSTALL_ALL)
+		install(DIRECTORY ${HTML_DEST_DIR}
+			DESTINATION ${CMAKE_INSTALL_DOCDIR})
 	endif()
-else()
-	message(STATUS "Doxygen not found, API documentation won't be generated")
 endif()
+
+option(WITH_MAN "Generate on-line reference manuals (man pages)" OFF)
+add_subdirectory(man)
 
 # Create an installer if compiling for OSX
 if(OSX_PACKAGE)
